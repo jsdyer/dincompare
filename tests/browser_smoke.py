@@ -3,6 +3,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import shutil
+import os
 import tempfile
 import threading
 from playwright.sync_api import sync_playwright
@@ -24,27 +25,45 @@ def main():
         threading.Thread(target=server.serve_forever, daemon=True).start()
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch()
+                browser = p.chromium.launch(executable_path=os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE"))
                 page = browser.new_page(viewport={"width": 1280, "height": 1000})
                 errors = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 page.goto(f"http://127.0.0.1:{server.server_port}/example-tool/")
-                page.locator("#sample").click()
-                assert page.locator("#output").input_value() == "Halifax\nLangley\nVancouver"
-                assert "1 duplicate removed" in page.locator("#status").inner_text()
-                page.locator("#input").fill('<img src=x onerror="alert(1)">\n<img src=x onerror="alert(1)">')
-                assert page.locator("#output").input_value() == '<img src=x onerror="alert(1)">'
-                assert page.locator("img").count() == 0
-                page.locator("#clear").click()
-                assert page.locator("#output").input_value() == ""
-                page.locator("#sample").click()
+                import json
+                fixtures = {
+                    'drugproduct': [{'drug_code':2049,'drug_identification_number':'00326925','brand_name':'Example <img src=x onerror=alert(1)>','company_name':'Test company','class_name':'Human','last_update_date':'2026-01-01'}],
+                    'activeingredient': [{'drug_code':2049,'ingredient_name':'TEST INGREDIENT','strength':'5','strength_unit':'MG'}],
+                    'form': [{'drug_code':2049,'pharmaceutical_form_name':'Tablet'}],
+                    'route': [],
+                    'status': {'drug_code':2049,'status':'Marketed','history_date':'2020-01-01'},
+                }
+                def route_api(route):
+                    endpoint = route.request.url.split('/api/drug/')[1].split('/')[0]
+                    route.fulfill(status=200, content_type='application/json', body=json.dumps(fixtures[endpoint]),headers={'Access-Control-Allow-Origin':'*'})
+                page.route('https://health-products.canada.ca/api/drug/**', route_api)
+                page.locator('#query').fill('00326925')
+                page.locator('#searchButton').click()
+                page.get_by_role('button',name='Add to comparison',exact=True).wait_for()
+                assert page.locator('#results img').count()==0
+                page.get_by_role('button',name='Add to comparison',exact=True).click()
+                page.locator('#comparison table').wait_for()
+                assert 'TEST INGREDIENT' in page.locator('#comparison').inner_text()
+                assert 'Not supplied' in page.locator('#comparison').inner_text()
+                assert 'Marketed' in page.locator('#comparison').inner_text()
+                page.locator('#clear').click()
+                assert page.locator('#results article').count()==0
+                assert not page.locator('#compareSection').is_visible()
+                page.locator('#query').fill('12345')
+                page.locator('#searchButton').click()
+                assert 'eight digits' in page.locator('#error').inner_text()
                 page.screenshot(path=str(screenshots / "desktop.png"), full_page=True)
                 page.set_viewport_size({"width": 390, "height": 844})
                 assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
                 page.screenshot(path=str(screenshots / "mobile.png"), full_page=True)
                 assert not errors, errors
                 browser.close()
-            print("Browser checks passed: project subpath, sample, clear, safe text and mobile layout")
+            print("Browser checks passed: project subpath, live-API rendering, comparison, safe text and mobile layout")
         finally:
             server.shutdown()
 

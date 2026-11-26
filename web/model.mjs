@@ -1,7 +1,8 @@
-// Keep transformations separate from the DOM so they can be tested directly.
-export function cleanLines(text) {
-  if (typeof text !== 'string') throw new TypeError('Expected text');
-  const lines = text.split(/\r\n|\r|\n/).map(line => line.trim()).filter(Boolean);
-  const unique = [...new Set(lines)];
-  return { text: unique.join('\n'), count: unique.length, removed: lines.length - unique.length };
-}
+export const API='https://health-products.canada.ca/api/drug/';
+export function searchParams(input,status='2'){const text=String(input).trim();if(!text)throw Error('Enter a DIN or a product brand name.');const compact=text.replace(/[\s-]/g,'');const p=new URLSearchParams({lang:'en',type:'json'});if(/^\d+$/.test(compact)){if(compact.length!==8)throw Error('A DIN has eight digits. Keep any leading zero.');p.set('din',compact)}else{if(text.length<2||text.length>100)throw Error('Enter a brand name between 2 and 100 characters.');p.set('brandname',text)}if(status){if(!['1','2','3','4','6','9','10','11','12','13','14','15'].includes(status))throw Error('Unsupported status filter.');p.set('status',status)}return p;}
+export function array(value){if(Array.isArray(value))return value;if(value&&typeof value==='object'&&!value.error)return[value];throw Error('Health Canada returned an unexpected response.');}
+export function products(value){return array(value).filter(p=>p&&Number.isInteger(p.drug_code)&&/^\d{8}$/.test(String(p.drug_identification_number))&&typeof p.brand_name==='string').map(p=>({...p,drug_identification_number:String(p.drug_identification_number)}));}
+export function recordUrl(code){if(!Number.isInteger(code)||code<1)throw Error('Invalid product code');return`https://health-products.canada.ca/dpd-bdpp/info?lang=eng&code=${code}`;}
+export function ingredientText(i){return [i.ingredient_name,[i.strength,i.strength_unit].filter(Boolean).join(' '),i.dosage_value||i.dosage_unit?'per '+[i.dosage_value,i.dosage_unit].filter(Boolean).join(' '):''].filter(Boolean).join(' · ');}
+export function fieldText(d,key){const value=d[key];if(value?.error)return'Unavailable — '+value.error;const rows=value?.rows||[];if(!rows.length)return'Not supplied';const map={ingredients:ingredientText,forms:r=>r.pharmaceutical_form_name,routes:r=>r.route_of_administration_name,status:r=>[r.status,r.history_date?'since '+r.history_date:''].filter(Boolean).join(' ')};return rows.map(map[key]).filter(Boolean).join('; ')||'Not supplied';}
+export function comparisonRows(items){return [['DIN',p=>p.product.drug_identification_number],['Product',p=>p.product.brand_name],['Company',p=>p.product.company_name||'Not supplied'],['Class',p=>p.product.class_name||'Not supplied'],['Ingredients and strengths',p=>fieldText(p,'ingredients')],['Dosage forms',p=>fieldText(p,'forms')],['Routes',p=>fieldText(p,'routes')],['Status',p=>fieldText(p,'status')],['Source last-update field',p=>p.product.last_update_date||'Not supplied'],['Retrieved',p=>p.retrievedAt]].map(([name,fn])=>[name,...items.map(fn)]);}

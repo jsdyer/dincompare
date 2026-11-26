@@ -1,16 +1,22 @@
 {
-  "id": "coolcode-tool-template",
-  "title": "CoolCode Tool Starter",
-  "description": "A browser-only example that trims lines and removes exact duplicates.",
-  "category": "security",
-  "tags": ["text", "lines", "duplicates"],
-  "icon": "scan-search",
-  "url": "/coolcode-tool-template/",
-  "source": "https://github.com/jsdyer/coolcode-tool-template",
+  "id": "dincompare",
+  "title": "DIN Compare",
+  "description": "Find Canadian drug products by DIN or name and compare official ingredient, strength, form and status information.",
+  "category": "field-kit",
+  "tags": [
+    "health",
+    "Canada",
+    "drugs",
+    "DIN",
+    "reference"
+  ],
+  "icon": "pill",
+  "url": "/dincompare/",
+  "source": "https://github.com/jsdyer/dincompare",
   "hosting": "project",
   "access": "browser",
   "data_info": {
-    "mode": "local",
-    "detail": "The browser reads the text you paste and compares its lines."
+    "mode": "live",
+    "detail": "Live product, ingredient, form, route and status information from Health Canada\u2019s Drug Product Database."
   }
 }

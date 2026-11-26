@@ -1,37 +1,10 @@
-import { cleanLines } from './model.mjs';
-const input = document.querySelector('#input');
-const output = document.querySelector('#output');
-const status = document.querySelector('#status');
-const copy = document.querySelector('#copy');
-function update() {
-  const result = cleanLines(input.value);
-  output.value = result.text;
-  status.textContent = `${result.count} unique ${result.count === 1 ? 'line' : 'lines'}; ${result.removed} ${result.removed === 1 ? 'duplicate' : 'duplicates'} removed.`;
-  copy.disabled = result.count === 0;
-}
-input.addEventListener('input', update);
-document.querySelector('#sample').addEventListener('click', () => {
-  input.value = '  Halifax\nLangley\nHalifax\n\nVancouver  ';
-  update();
-});
-document.querySelector('#clear').addEventListener('click', () => {
-  input.value = '';
-  update();
-  input.focus();
-});
-if (navigator.clipboard && window.isSecureContext) {
-  copy.hidden = false;
-  copy.disabled = true;
-  copy.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(output.value);
-      status.textContent = 'Result copied.';
-    } catch {
-      output.focus();
-      output.select();
-      status.textContent = 'Copy was unavailable. The result is selected so you can copy it manually.';
-    }
-  });
-}
-// Namespace future preference storage as coolcode:<tool-id>:<key>.
-// Do not persist pasted text or uploads by default.
+import{API,searchParams,products,array,recordUrl,comparisonRows}from'./model.mjs';
+const $=s=>document.querySelector(s),settings=await fetch('./settings.json').then(r=>r.json());let results=[],selected=[],busy=false,generation=0;const cache=new Map();const endpoints={ingredients:'activeingredient',forms:'form',routes:'route',status:'status'};
+function el(tag,text,cls){const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n}
+function error(message){$('#error').textContent=message;$('#error').hidden=!message}
+async function request(path,params){const url=API+path+'/?'+params.toString();const old=cache.get(url);if(old&&Date.now()-old.time<settings.cacheMinutes*60000)return old.value;const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),settings.timeoutMs);try{const response=await fetch(url,{signal:controller.signal,credentials:'omit',referrerPolicy:'no-referrer',headers:{Accept:'application/json'}});if(!response.ok)throw Error('Health Canada returned HTTP '+response.status+'. Try again later or open its official database.');const text=await response.text();if(text.length>12000000)throw Error('Response is too broad; use a more specific search.');let value;try{value=JSON.parse(text)}catch{throw Error('Health Canada returned an unreadable response.')}if(cache.size>=250)cache.clear();cache.set(url,{time:Date.now(),value});return value}catch(e){if(e.name==='AbortError')throw Error('Health Canada did not respond within 30 seconds. Please try again later.');throw e}finally{clearTimeout(timer)}}
+function showResults(){$('#results').replaceChildren();const cls=$('#classFilter').value,term=$('#resultFilter').value.toLowerCase(),filtered=results.filter(p=>(!cls||p.class_name===cls)&&(!term||[p.brand_name,p.company_name,p.drug_identification_number].join(' ').toLowerCase().includes(term)));for(const p of filtered.slice(0,settings.maxResults)){const card=el('article'),h=el('h3',p.brand_name),meta=el('p','DIN '+p.drug_identification_number+' · '+p.company_name,'muted'),badge=el('span',p.class_name,'badge'),button=el('button',selected.some(s=>s.product.drug_code===p.drug_code)?'Added':'Add to comparison'),link=el('a','Official record & monograph ↗');link.href=recordUrl(p.drug_code);link.target='_blank';link.rel='noopener noreferrer';button.disabled=busy||selected.length>=settings.maxCompare||selected.some(s=>s.product.drug_code===p.drug_code);button.onclick=()=>add(p);const actions=el('div',undefined,'actions');actions.append(button,link);card.append(h,meta,badge);if(p.descriptor)card.append(el('p',p.descriptor));card.append(actions);$('#results').append(card)}if(results.length)$('#status').textContent=`${results.length.toLocaleString()} API matches · ${filtered.length.toLocaleString()} match local filters · showing ${Math.min(settings.maxResults,filtered.length)}. Select up to ${settings.maxCompare} products.${filtered.length>settings.maxResults?' Refine your search to see more specific results.':''}`}
+async function add(product){if(busy||selected.length>=settings.maxCompare)return;busy=true;showResults();const token=generation,item={product,retrievedAt:new Date().toISOString()};$('#status').textContent='Loading official details for DIN '+product.drug_identification_number+'…';for(const [key,path]of Object.entries(endpoints)){if(token!==generation){busy=false;return}try{const value=await request(path,new URLSearchParams({id:product.drug_code,lang:settings.language,type:'json'}));item[key]={rows:array(value)}}catch(e){item[key]={error:e.message}}}if(token!==generation){busy=false;return}selected.push(item);busy=false;showComparison();showResults()}
+function showComparison(){$('#compareSection').hidden=!selected.length;$('#comparison').replaceChildren();$('#removeButtons').replaceChildren();if(!selected.length)return;const table=el('table'),head=el('thead'),hr=el('tr');hr.append(el('th','Field'));selected.forEach(p=>hr.append(el('th',p.product.brand_name+' · '+p.product.drug_identification_number)));head.append(hr);table.append(head);const body=el('tbody');for(const row of comparisonRows(selected)){const tr=el('tr');row.forEach((v,i)=>tr.append(el(i?'td':'th',v)));body.append(tr)}table.append(body);$('#comparison').append(table);selected.forEach((p,i)=>{const button=el('button','Remove '+p.product.drug_identification_number,'secondary');button.onclick=()=>{selected.splice(i,1);showComparison();showResults()};$('#removeButtons').append(button)})}
+$('#searchForm').onsubmit=async e=>{e.preventDefault();let params;try{params=searchParams($('#query').value,$('#statusFilter').value)}catch(e){error(e.message);return}const token=++generation;busy=false;error('');$('#searchButton').disabled=true;$('#status').textContent='Searching Health Canada…';$('#results').replaceChildren();try{const value=await request('drugproduct',params);if(token!==generation)return;results=products(value);$('#resultFilter').value='';showResults();if(!results.length)$('#status').textContent='No products matched. Check the eight-digit DIN or try All statuses.'}catch(e){if(token===generation){results=[];error(e.message);$('#status').textContent='Search could not be completed.'}}finally{if(token===generation)$('#searchButton').disabled=false}};
+$('#classFilter').onchange=showResults;$('#resultFilter').oninput=showResults;$('#clear').onclick=()=>{generation++;busy=false;cache.clear();results=[];selected=[];$('#query').value='';$('#resultFilter').value='';$('#searchButton').disabled=false;error('');showResults();showComparison();$('#status').textContent='Session cleared. No search history is saved.'};$('#export').onclick=()=>{const data={source:'Health Canada Drug Product Database',exportedAt:new Date().toISOString(),notice:'Product information only; no interchangeability or treatment recommendation.',records:selected},a=document.createElement('a'),u=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));a.href=u;a.download='dincompare-records.json';a.click();URL.revokeObjectURL(u)};

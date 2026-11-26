@@ -1,21 +1,6 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { cleanLines } from '../web/model.mjs';
-test('trims, removes blanks and preserves first-seen order', () => {
-  assert.deepEqual(cleanLines('  Halifax\nLangley\nHalifax\n\nVancouver  '), {
-    text: 'Halifax\nLangley\nVancouver', count: 3, removed: 1,
-  });
-});
-test('supports Windows and old Mac line endings', () => {
-  assert.equal(cleanLines('a\r\nb\ra').text, 'a\nb');
-});
-test('empty text and whitespace produce an empty result', () => {
-  assert.deepEqual(cleanLines(' \n\t'), { text: '', count: 0, removed: 0 });
-});
-test('preserves case and Unicode', () => {
-  assert.equal(cleanLines('Québec\nquébec\n東京\nQuébec').text, 'Québec\nquébec\n東京');
-});
-test('treats markup as ordinary text', () => {
-  assert.equal(cleanLines('<script>alert(1)</script>\n<script>alert(1)</script>').text, '<script>alert(1)</script>');
-});
-test('rejects non-text input', () => { assert.throws(() => cleanLines(null), TypeError); });
+import test from'node:test';import assert from'node:assert/strict';import{searchParams,products,array,recordUrl,ingredientText,fieldText}from'../web/model.mjs';
+test('DIN keeps leading zeros; malformed numerals rejected',()=>{assert.equal(searchParams('0032 6925').get('din'),'00326925');assert.throws(()=>searchParams('326925'));assert.throws(()=>searchParams(''));});
+test('brand search is URL encoded and arbitrary valid names supported',()=>{assert.equal(searchParams('Brand & extra').get('brandname'),'Brand & extra');assert.equal(searchParams('Brand','').has('status'),false);assert.throws(()=>searchParams('Brand','bogus'))});
+test('DPD object and array forms are supported without inventing data',()=>{const p={drug_code:2049,brand_name:'SINEQUAN',drug_identification_number:'00326925'};assert.equal(products(p).length,1);assert.equal(products([p,{}]).length,1);assert.deepEqual(array({status:'Marketed'}),[{status:'Marketed'}]);assert.throws(()=>array(null))});
+test('ingredient dose units stay distinct and unavailable endpoints visible',()=>{assert.equal(ingredientText({ingredient_name:'A',strength:'5',strength_unit:'MG',dosage_value:'1',dosage_unit:'ML'}),'A · 5 MG · per 1 ML');assert.equal(fieldText({status:{error:'HTTP 503'}},'status'),'Unavailable — HTTP 503');assert.equal(fieldText({forms:{rows:[]}},'forms'),'Not supplied')});
+test('official links cannot inject arbitrary addresses',()=>{assert.ok(recordUrl(2049).endsWith('code=2049'));assert.throws(()=>recordUrl('javascript:bad'))});

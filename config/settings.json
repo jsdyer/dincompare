@@ -1,0 +1,1 @@
+{"apiBase":"https://health-products.canada.ca/api/drug/","maxResults":100,"maxCompare":3,"timeoutMs":30000,"cacheMinutes":5,"defaultStatus":"2","language":"en"}
